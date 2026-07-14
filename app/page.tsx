@@ -1,11 +1,7 @@
 "use client";
 
-import {
-  PointerEvent as ReactPointerEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
 type Phase = "idle" | "writing" | "listening" | "thinking" | "answer" | "error";
 type AiState = "checking" | "ready" | "missing" | "offline";
@@ -23,6 +19,7 @@ type InkBounds = {
 };
 
 const WRITING_PAUSE_MS = 3200;
+const INK_WORD_GAP_MS = 18;
 const EMPTY_BOUNDS: InkBounds = {
   minX: Number.POSITIVE_INFINITY,
   minY: Number.POSITIVE_INFINITY,
@@ -35,8 +32,7 @@ export default function Home() {
   const [aiState, setAiState] = useState<AiState>("checking");
   const [model, setModel] = useState("gemini-3.1-flash-lite");
   const [answer, setAnswer] = useState<Answer | null>(null);
-  const [visibleAnswer, setVisibleAnswer] = useState("");
-  const [answerTop, setAnswerTop] = useState("44%");
+  const [answerComplete, setAnswerComplete] = useState(false);
   const [error, setError] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -87,13 +83,11 @@ export default function Home() {
 
   useEffect(() => {
     if (!answer) return;
-    let index = 0;
-    const interval = window.setInterval(() => {
-      index = Math.min(index + 2, answer.answer.length);
-      setVisibleAnswer(answer.answer.slice(0, index));
-      if (index >= answer.answer.length) window.clearInterval(interval);
-    }, 20);
-    return () => window.clearInterval(interval);
+    const timer = window.setTimeout(
+      () => setAnswerComplete(true),
+      answerInkDuration(answer.answer) + 350,
+    );
+    return () => window.clearTimeout(timer);
   }, [answer]);
 
   async function checkGemini() {
@@ -195,9 +189,6 @@ export default function Home() {
     setError("");
 
     const bounds = boundsRef.current;
-    const desiredTop = Math.max(bounds.maxY + 54, window.innerHeight * 0.34);
-    const safeTop = Math.min(desiredTop, window.innerHeight - 220);
-    setAnswerTop(`${Math.max(130, safeTop)}px`);
 
     try {
       const response = await fetch("/api/ask", {
@@ -212,7 +203,7 @@ export default function Home() {
       };
       if (!response.ok || !data.answer) throw new Error(data.error || "The page remained silent.");
 
-      setVisibleAnswer("");
+      setAnswerComplete(false);
       setAnswer({
         question: data.question || "Your handwritten question",
         answer: data.answer,
@@ -242,7 +233,7 @@ export default function Home() {
     lastPointRef.current = null;
     boundsRef.current = { ...EMPTY_BOUNDS };
     setAnswer(null);
-    setVisibleAnswer("");
+    setAnswerComplete(false);
     setError("");
     setPhase("idle");
   }
@@ -282,13 +273,12 @@ export default function Home() {
       )}
 
       {answer && (
-        <article className="written-answer" style={{ top: answerTop }} aria-live="polite">
+        <article className={`written-answer ${answerLengthClass(answer.answer)}`} aria-live="polite">
           <span className="answer-flourish" aria-hidden="true">✦</span>
-          <p>
-            {visibleAnswer}
-            {visibleAnswer.length < answer.answer.length && <span className="quill-cursor">|</span>}
+          <p aria-label={answer.answer}>
+            <span aria-hidden="true">{renderInkWords(answer.answer)}</span>
           </p>
-          {visibleAnswer.length === answer.answer.length && (
+          {answerComplete && (
             <small>Begin writing to turn the page</small>
           )}
         </article>
@@ -348,6 +338,45 @@ function exportCanvas(canvas: HTMLCanvasElement, bounds: InkBounds) {
   context.fillRect(0, 0, exported.width, exported.height);
   context.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, exported.width, exported.height);
   return exported.toDataURL("image/png");
+}
+
+function renderInkWords(text: string) {
+  let elapsed = 0;
+
+  return text.split(/(\s+)/).map((token, index) => {
+    if (/^\s+$/.test(token)) return token;
+    const duration = wordInkDuration(token);
+    const delay = elapsed;
+    elapsed += duration + INK_WORD_GAP_MS;
+
+    const style = {
+      "--ink-delay": `${delay}ms`,
+      "--ink-duration": `${duration}ms`,
+    } as CSSProperties;
+
+    return (
+      <span className="ink-word" data-word={token} style={style} key={`${index}-${token}`}>
+        {token}
+      </span>
+    );
+  });
+}
+
+function wordInkDuration(word: string) {
+  return Math.max(160, word.length * 70);
+}
+
+function answerInkDuration(text: string) {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .reduce((duration, word) => duration + wordInkDuration(word) + INK_WORD_GAP_MS, 0);
+}
+
+function answerLengthClass(text: string) {
+  if (text.length > 260) return "answer-very-long";
+  if (text.length > 150) return "answer-long";
+  return "answer-short";
 }
 
 function statusText(phase: Phase, aiState: AiState, model: string) {

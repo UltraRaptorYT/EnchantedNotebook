@@ -35,6 +35,7 @@ Open [http://localhost:3000](http://localhost:3000).
 There are no submit, clear, or mode buttons. Pointer Events provide pressure-aware
 stylus, touch, and mouse drawing across the whole viewport. When writing pauses
 for 3.2 seconds, the ink bounds are padded, enlarged, and sent to Gemini automatically.
+Gemini's response is revealed continuously letter by letter with a natural cursive ink-tracing effect.
 Writing another stroke before the timer finishes cancels submission and continues
 the current question. After an answer appears, the next stroke automatically turns
 to a fresh page.
