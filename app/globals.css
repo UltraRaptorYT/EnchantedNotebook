@@ -191,7 +191,7 @@ body {
   left: clamp(78px, 12vw, 184px);
   margin: 0;
   color: rgba(70, 78, 99, 0.25);
-  font-family: var(--font-diary), "Segoe Print", cursive;
+  font-family: var(--font-notebook), "Segoe Print", cursive;
   font-size: clamp(27px, 4vw, 45px);
   transform: rotate(-1deg);
   pointer-events: none;
@@ -318,7 +318,7 @@ body {
   max-width: 960px;
   margin: 0;
   color: #293650;
-  font-family: var(--font-diary), "Segoe Print", cursive;
+  font-family: var(--font-notebook), "Segoe Print", cursive;
   font-size: clamp(25px, 3.7vw, 48px);
   font-weight: 500;
   line-height: 1.23;
@@ -457,7 +457,7 @@ body {
 .page-error p {
   margin: 0 0 8px;
   color: #8d4f4f;
-  font-family: var(--font-diary), "Segoe Print", cursive;
+  font-family: var(--font-notebook), "Segoe Print", cursive;
   font-size: clamp(25px, 3.5vw, 39px);
 }
 

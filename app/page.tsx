@@ -246,7 +246,7 @@ export default function Home() {
 
       <header className="quiet-header" aria-live="polite">
         <div>
-          <p>THE ENCHANTED DIARY</p>
+          <p>THE ENCHANTED NOTEBOOK</p>
           <time>{formatDate(new Date())}</time>
         </div>
         <p className={`whisper-status ai-${aiState}`}>{statusText(phase, aiState, model)}</p>
@@ -263,7 +263,7 @@ export default function Home() {
         onPointerMove={continueStroke}
         onPointerUp={endStroke}
         onPointerCancel={endStroke}
-        aria-label="Write a question with your finger, stylus, or mouse. The diary answers automatically after you pause."
+        aria-label="Write a question with your finger, stylus, or mouse. The notebook answers automatically after you pause."
       />
 
       {(phase === "listening" || phase === "thinking") && (
@@ -381,7 +381,7 @@ function answerLengthClass(text: string) {
 
 function statusText(phase: Phase, aiState: AiState, model: string) {
   if (aiState === "checking") return "Waking the ink…";
-  if (aiState === "missing") return "Add GEMINI_API_KEY to wake the diary";
+  if (aiState === "missing") return "Add GEMINI_API_KEY to wake the notebook";
   if (aiState === "offline") return "Gemini is unavailable";
   if (phase === "writing") return "The page is following your pen";
   if (phase === "listening") return "Pause detected · listening…";

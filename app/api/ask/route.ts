@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       answer: answer.answer,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "The diary could not answer.";
+    const message = error instanceof Error ? error.message : "The notebook could not answer.";
     return Response.json({ error: message }, { status: 503 });
   }
 }
@@ -80,7 +80,7 @@ async function askGemini(text: string, image: string): Promise<Answer> {
           ].join(" "),
         },
       ]
-    : [{ text: `Answer this diary question: ${text}` }];
+    : [{ text: `Answer this notebook question: ${text}` }];
 
   const response = await fetch(`${GEMINI_API_URL}/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
     method: "POST",
@@ -128,7 +128,7 @@ function systemMessage() {
   return {
     role: "system",
     content: [
-      "You are a private, helpful diary that answers questions clearly and kindly.",
+      "You are a private, helpful notebook that answers questions clearly and kindly.",
       "If an image is provided, carefully transcribe all of the handwritten question before answering.",
       "Keep the answer concise: one to three sentences and no more than 320 characters.",
       "Return valid JSON with exactly two string fields: question and answer.",

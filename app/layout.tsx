@@ -2,15 +2,15 @@ import type { Metadata, Viewport } from "next";
 import { Caveat } from "next/font/google";
 import "./globals.css";
 
-const diaryScript = Caveat({
+const notebookScript = Caveat({
   subsets: ["latin"],
-  variable: "--font-diary",
+  variable: "--font-notebook",
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "The Enchanted Notebook",
-  description: "A magical full-screen diary that reads handwritten questions and answers with Gemini.",
+  description: "A magical full-screen notebook that reads handwritten questions and answers with Gemini.",
 };
 
 export const viewport: Viewport = {
@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={diaryScript.variable}>{children}</body>
+      <body className={notebookScript.variable}>{children}</body>
     </html>
   );
 }
