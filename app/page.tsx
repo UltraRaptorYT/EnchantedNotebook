@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import { NotebookSound } from "./notebook-sound";
 
 type Phase = "idle" | "writing" | "listening" | "thinking" | "answer" | "error";
 type AiState = "checking" | "ready" | "missing" | "offline";
@@ -34,7 +35,12 @@ export default function Home() {
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [answerComplete, setAnswerComplete] = useState(false);
   const [error, setError] = useState("");
+  const [soundMuted, setSoundMuted] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const soundRef = useRef<NotebookSound | null>(null);
+  if (!soundRef.current || typeof soundRef.current.startPen !== "function") {
+    soundRef.current = new NotebookSound();
+  }
   const drawingRef = useRef(false);
   const hasInkRef = useRef(false);
   const inkLengthRef = useRef(0);
@@ -43,6 +49,9 @@ export default function Home() {
   const pauseTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const savedMuted = window.localStorage.getItem("enchanted-notebook-muted") === "true";
+    soundRef.current?.setMuted(savedMuted);
+
     void checkGemini();
 
     const canvas = canvasRef.current;
@@ -71,23 +80,40 @@ export default function Home() {
       }
     };
 
+    const preferenceFrame = requestAnimationFrame(() => setSoundMuted(savedMuted));
     const frame = requestAnimationFrame(resizeCanvas);
     const observer = new ResizeObserver(resizeCanvas);
     observer.observe(canvas);
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(preferenceFrame);
       observer.disconnect();
       if (pauseTimerRef.current) window.clearTimeout(pauseTimerRef.current);
     };
   }, []);
 
+  function toggleSound() {
+    const nextMuted = !soundMuted;
+    soundRef.current?.setMuted(nextMuted);
+    if (!nextMuted) soundRef.current?.unlock();
+    window.localStorage.setItem("enchanted-notebook-muted", String(nextMuted));
+    setSoundMuted(nextMuted);
+  }
+
   useEffect(() => {
     if (!answer) return;
+    soundRef.current?.startPen("answer");
     const timer = window.setTimeout(
-      () => setAnswerComplete(true),
+      () => {
+        setAnswerComplete(true);
+        soundRef.current?.stopPen("answer");
+      },
       answerInkDuration(answer.answer) + 350,
     );
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      soundRef.current?.stopPen("answer");
+    };
   }, [answer]);
 
   async function checkGemini() {
@@ -109,7 +135,10 @@ export default function Home() {
   function beginStroke(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (phase === "thinking") return;
 
+    soundRef.current?.unlock();
+
     if (phase === "answer" || phase === "error") {
+      soundRef.current?.pageTurn();
       resetPage();
     }
     cancelPauseDetection();
@@ -130,6 +159,8 @@ export default function Home() {
     context.moveTo(point.x, point.y);
     context.lineTo(point.x + 0.1, point.y + 0.1);
     context.stroke();
+    soundRef.current?.nibDown();
+    soundRef.current?.startPen("user");
   }
 
   function continueStroke(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -156,6 +187,7 @@ export default function Home() {
   function endStroke(event: ReactPointerEvent<HTMLCanvasElement>) {
     drawingRef.current = false;
     lastPointRef.current = null;
+    soundRef.current?.stopPen("user");
     if (canvasRef.current?.hasPointerCapture(event.pointerId)) {
       canvasRef.current.releasePointerCapture(event.pointerId);
     }
@@ -169,6 +201,7 @@ export default function Home() {
       return;
     }
     setPhase("listening");
+    soundRef.current?.listening();
     pauseTimerRef.current = window.setTimeout(() => {
       void submitHandwriting();
     }, WRITING_PAUSE_MS);
@@ -209,6 +242,7 @@ export default function Home() {
         answer: data.answer,
       });
       setPhase("answer");
+      soundRef.current?.answer();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "The page remained silent.");
       setPhase("error");
@@ -251,6 +285,17 @@ export default function Home() {
         </div>
         <p className={`whisper-status ai-${aiState}`}>{statusText(phase, aiState, model)}</p>
       </header>
+
+      <button
+        className="sound-toggle"
+        type="button"
+        aria-label={soundMuted ? "Turn notebook sounds on" : "Mute notebook sounds"}
+        aria-pressed={soundMuted}
+        onClick={toggleSound}
+      >
+        <span aria-hidden="true">{soundMuted ? "♪̸" : "♪"}</span>
+        {soundMuted ? "Sound off" : "Sound on"}
+      </button>
 
       {phase === "idle" && (
         <p className="write-hint">Write a question anywhere on the page…</p>

@@ -135,6 +135,48 @@ body {
   user-select: none;
 }
 
+.sound-toggle {
+  position: absolute;
+  z-index: 14;
+  right: clamp(18px, 3vw, 44px);
+  bottom: clamp(17px, 3vw, 34px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(67, 65, 84, 0.13);
+  border-radius: 999px;
+  color: rgba(67, 65, 84, 0.48);
+  background: rgba(255, 253, 247, 0.58);
+  box-shadow: 0 3px 16px rgba(72, 56, 30, 0.05);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 9px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.sound-toggle span {
+  width: 12px;
+  color: rgba(128, 110, 168, 0.7);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.sound-toggle:hover,
+.sound-toggle:focus-visible {
+  border-color: rgba(128, 110, 168, 0.3);
+  color: rgba(50, 49, 68, 0.74);
+  background: rgba(255, 253, 247, 0.82);
+}
+
+.sound-toggle:focus-visible {
+  outline: 2px solid rgba(128, 110, 168, 0.36);
+  outline-offset: 3px;
+}
+
 .quiet-header p,
 .quiet-header time {
   margin: 0;
