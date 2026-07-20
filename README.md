@@ -29,13 +29,51 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-There are no submit, clear, or mode buttons. Pointer Events provide pressure-aware
+There are no submit or mode buttons. Pointer Events provide pressure-aware
 stylus, touch, and mouse drawing across the whole viewport. When writing pauses
 for 3.2 seconds, the ink bounds are padded, enlarged, and sent to Gemini automatically.
 Gemini's response is revealed continuously letter by letter with a natural cursive ink-tracing effect.
 Writing another stroke before the timer finishes cancels submission and continues
 the current question. After an answer appears, the next stroke automatically turns
 to a fresh page.
+
+## History
+
+The History button keeps the latest 12 answered pages, including a compact image
+of the handwriting, Gemini's transcription, and its reply in the current browser.
+Individual pages or all local history can be deleted in the drawer.
+
+### Optional online owner archive
+
+To privately archive successful pages for the notebook owner, create a Supabase
+project and run
+[`supabase/migrations/20260720113250_create_notebook_history.sql`](supabase/migrations/20260720113250_create_notebook_history.sql)
+in its SQL Editor. Then add these server-only variables locally and to the Vercel
+project:
+
+```env
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_your_key_here
+```
+
+Use the secret key from Supabase's Connect dialog. Never prefix it with
+`NEXT_PUBLIC_` or expose it to browser code. Successful drawings are placed in
+the private `notebook-drawings` Storage bucket, while questions, replies, model,
+anonymous notebook ID, timestamps, and drawing paths appear in the
+`notebook_history` table. The table has RLS enabled and grants no access to public
+browser roles.
+
+Online archiving runs after the answer response, so a temporary logging problem
+does not prevent the visitor from receiving an answer. When online archiving is
+configured, the History drawer discloses that answered pages are also stored by
+the notebook owner.
+
+## Analytics
+
+The app includes Vercel Web Analytics for anonymous page-view and visitor metrics.
+After deploying to Vercel, open the project's **Analytics** tab and enable Web
+Analytics. The integration intentionally does not send handwriting, transcriptions,
+or AI replies as analytics data.
 
 ## Checks
 

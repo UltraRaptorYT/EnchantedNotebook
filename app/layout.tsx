@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Caveat } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const notebookScript = Caveat({
@@ -24,7 +25,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={notebookScript.variable}>{children}</body>
+      <body className={notebookScript.variable}>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }

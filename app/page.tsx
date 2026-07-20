@@ -12,6 +12,12 @@ type Answer = {
   answer: string;
 };
 
+type HistoryEntry = Answer & {
+  id: string;
+  drawing: string;
+  createdAt: string;
+};
+
 type InkBounds = {
   minX: number;
   minY: number;
@@ -21,6 +27,9 @@ type InkBounds = {
 
 const WRITING_PAUSE_MS = 3200;
 const INK_WORD_GAP_MS = 18;
+const HISTORY_STORAGE_KEY = "enchanted-notebook-history";
+const NOTEBOOK_ID_STORAGE_KEY = "enchanted-notebook-id";
+const MAX_HISTORY_ENTRIES = 12;
 const EMPTY_BOUNDS: InkBounds = {
   minX: Number.POSITIVE_INFINITY,
   minY: Number.POSITIVE_INFINITY,
@@ -36,6 +45,9 @@ export default function Home() {
   const [answerComplete, setAnswerComplete] = useState(false);
   const [error, setError] = useState("");
   const [soundMuted, setSoundMuted] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [onlineHistoryEnabled, setOnlineHistoryEnabled] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const soundRef = useRef<NotebookSound | null>(null);
   if (!soundRef.current || typeof soundRef.current.startPen !== "function") {
@@ -80,7 +92,10 @@ export default function Home() {
       }
     };
 
-    const preferenceFrame = requestAnimationFrame(() => setSoundMuted(savedMuted));
+    const preferenceFrame = requestAnimationFrame(() => {
+      setSoundMuted(savedMuted);
+      setHistory(readHistory());
+    });
     const frame = requestAnimationFrame(resizeCanvas);
     const observer = new ResizeObserver(resizeCanvas);
     observer.observe(canvas);
@@ -91,6 +106,16 @@ export default function Home() {
       if (pauseTimerRef.current) window.clearTimeout(pauseTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setHistoryOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [historyOpen]);
 
   function toggleSound() {
     const nextMuted = !soundMuted;
@@ -124,8 +149,10 @@ export default function Home() {
         available?: boolean;
         installed?: boolean;
         model?: string;
+        onlineHistory?: boolean;
       };
       setModel(data.model || "gemini-3.1-flash-lite");
+      setOnlineHistoryEnabled(Boolean(data.onlineHistory));
       setAiState(data.available && data.installed ? "ready" : data.available ? "missing" : "offline");
     } catch {
       setAiState("offline");
@@ -224,10 +251,17 @@ export default function Home() {
     const bounds = boundsRef.current;
 
     try {
+      const image = exportCanvas(canvas, bounds);
+      const drawing = exportCanvas(canvas, bounds, {
+        maxWidth: 560,
+        maxHeight: 260,
+        type: "image/webp",
+        quality: 0.72,
+      });
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: exportCanvas(canvas, bounds) }),
+        body: JSON.stringify({ image, notebookId: getNotebookId() }),
       });
       const data = (await response.json()) as {
         question?: string;
@@ -237,9 +271,16 @@ export default function Home() {
       if (!response.ok || !data.answer) throw new Error(data.error || "The page remained silent.");
 
       setAnswerComplete(false);
-      setAnswer({
+      const nextAnswer = {
         question: data.question || "Your handwritten question",
         answer: data.answer,
+      };
+      setAnswer(nextAnswer);
+      saveHistoryEntry({
+        id: createHistoryId(),
+        ...nextAnswer,
+        drawing,
+        createdAt: new Date().toISOString(),
       });
       setPhase("answer");
       soundRef.current?.answer();
@@ -272,6 +313,18 @@ export default function Home() {
     setPhase("idle");
   }
 
+  function saveHistoryEntry(entry: HistoryEntry) {
+    setHistory((current) => persistHistory([entry, ...current].slice(0, MAX_HISTORY_ENTRIES)));
+  }
+
+  function deleteHistoryEntry(id: string) {
+    setHistory((current) => persistHistory(current.filter((entry) => entry.id !== id)));
+  }
+
+  function clearHistory() {
+    setHistory(persistHistory([]));
+  }
+
   return (
     <main className={`enchanted-canvas phase-${phase}`}>
       <div className="paper-lines" aria-hidden="true" />
@@ -286,16 +339,29 @@ export default function Home() {
         <p className={`whisper-status ai-${aiState}`}>{statusText(phase, aiState, model)}</p>
       </header>
 
-      <button
-        className="sound-toggle"
-        type="button"
-        aria-label={soundMuted ? "Turn notebook sounds on" : "Mute notebook sounds"}
-        aria-pressed={soundMuted}
-        onClick={toggleSound}
-      >
-        <span aria-hidden="true">{soundMuted ? "♪̸" : "♪"}</span>
-        {soundMuted ? "Sound off" : "Sound on"}
-      </button>
+      <div className="notebook-controls">
+        <button
+          className="notebook-control history-toggle"
+          type="button"
+          aria-label="Open notebook history"
+          aria-expanded={historyOpen}
+          aria-controls="notebook-history"
+          onClick={() => setHistoryOpen(true)}
+        >
+          <span aria-hidden="true">☰</span>
+          History{history.length > 0 ? ` · ${history.length}` : ""}
+        </button>
+        <button
+          className="notebook-control sound-toggle"
+          type="button"
+          aria-label={soundMuted ? "Turn notebook sounds on" : "Mute notebook sounds"}
+          aria-pressed={soundMuted}
+          onClick={toggleSound}
+        >
+          <span aria-hidden="true">{soundMuted ? "♪̸" : "♪"}</span>
+          {soundMuted ? "Sound off" : "Sound on"}
+        </button>
+      </div>
 
       {phase === "idle" && (
         <p className="write-hint">Write a question anywhere on the page…</p>
@@ -336,6 +402,75 @@ export default function Home() {
         </div>
       )}
 
+      {historyOpen && (
+        <div className="history-layer">
+          <button
+            className="history-backdrop"
+            type="button"
+            aria-label="Close notebook history"
+            onClick={() => setHistoryOpen(false)}
+          />
+          <aside
+            className="history-drawer"
+            id="notebook-history"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="history-title"
+          >
+            <header className="history-header">
+              <div>
+                <p>PAST PAGES</p>
+                <h2 id="history-title">Notebook history</h2>
+              </div>
+              <button type="button" aria-label="Close notebook history" onClick={() => setHistoryOpen(false)}>
+                ×
+              </button>
+            </header>
+
+            <p className="history-privacy">
+              {onlineHistoryEnabled
+                ? "Shown here on this device. Answered pages are also stored privately by the notebook owner."
+                : "Saved only in this browser on this device."}
+            </p>
+
+            {history.length === 0 ? (
+              <div className="history-empty">
+                <span aria-hidden="true">✦</span>
+                <p>Your answered pages will gather here.</p>
+              </div>
+            ) : (
+              <div className="history-list">
+                {history.map((entry) => (
+                  <article className="history-entry" key={entry.id}>
+                    <div className="history-entry-heading">
+                      <time dateTime={entry.createdAt}>{formatHistoryDate(entry.createdAt)}</time>
+                      <button
+                        type="button"
+                        aria-label={`Remove local history entry from ${formatHistoryDate(entry.createdAt)}`}
+                        onClick={() => deleteHistoryEntry(entry.id)}
+                      >
+                        Remove locally
+                      </button>
+                    </div>
+                    {/* A data URL is required because history is intentionally device-local. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={entry.drawing} alt="Your handwritten question" />
+                    <p className="history-question">“{entry.question}”</p>
+                    <p className="history-answer">{entry.answer}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {history.length > 0 && (
+              <button className="clear-history" type="button" onClick={clearHistory}>
+                Clear local history
+              </button>
+            )}
+          </aside>
+        </div>
+      )}
+
       <div className="magic-motes" aria-hidden="true">
         {Array.from({ length: 14 }, (_, index) => <i key={index} />)}
       </div>
@@ -365,14 +500,26 @@ function clearCanvas(canvas: HTMLCanvasElement | null) {
   context.restore();
 }
 
-function exportCanvas(canvas: HTMLCanvasElement, bounds: InkBounds) {
+function exportCanvas(
+  canvas: HTMLCanvasElement,
+  bounds: InkBounds,
+  options: {
+    maxWidth?: number;
+    maxHeight?: number;
+    type?: "image/png" | "image/webp";
+    quality?: number;
+  } = {},
+) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const padding = 64;
   const sourceX = Math.max(0, (bounds.minX - padding) * dpr);
   const sourceY = Math.max(0, (bounds.minY - padding) * dpr);
   const sourceWidth = Math.min(canvas.width - sourceX, (bounds.maxX - bounds.minX + padding * 2) * dpr);
   const sourceHeight = Math.min(canvas.height - sourceY, (bounds.maxY - bounds.minY + padding * 2) * dpr);
-  const exportScale = Math.max(0.25, Math.min(3, 1600 / sourceWidth, 700 / sourceHeight));
+  const exportScale = Math.max(
+    0.05,
+    Math.min(3, (options.maxWidth || 1600) / sourceWidth, (options.maxHeight || 700) / sourceHeight),
+  );
 
   const exported = document.createElement("canvas");
   exported.width = Math.max(1, Math.round(sourceWidth * exportScale));
@@ -382,7 +529,72 @@ function exportCanvas(canvas: HTMLCanvasElement, bounds: InkBounds) {
   context.fillStyle = "#fffdf7";
   context.fillRect(0, 0, exported.width, exported.height);
   context.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, exported.width, exported.height);
-  return exported.toDataURL("image/png");
+  return exported.toDataURL(options.type || "image/png", options.quality);
+}
+
+function readHistory(): HistoryEntry[] {
+  try {
+    const saved = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isHistoryEntry).slice(0, MAX_HISTORY_ENTRIES);
+  } catch {
+    return [];
+  }
+}
+
+function persistHistory(entries: HistoryEntry[]) {
+  let saved = entries;
+  while (true) {
+    try {
+      window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(saved));
+      return saved;
+    } catch {
+      if (saved.length === 0) return [];
+      saved = saved.slice(0, -1);
+    }
+  }
+}
+
+function isHistoryEntry(value: unknown): value is HistoryEntry {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<HistoryEntry>;
+  return (
+    typeof entry.id === "string" &&
+    typeof entry.drawing === "string" &&
+    typeof entry.question === "string" &&
+    typeof entry.answer === "string" &&
+    typeof entry.createdAt === "string"
+  );
+}
+
+function createHistoryId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getNotebookId() {
+  try {
+    const saved = window.localStorage.getItem(NOTEBOOK_ID_STORAGE_KEY);
+    if (saved) return saved;
+
+    const id = globalThis.crypto.randomUUID();
+    window.localStorage.setItem(NOTEBOOK_ID_STORAGE_KEY, id);
+    return id;
+  } catch {
+    return globalThis.crypto.randomUUID();
+  }
+}
+
+function formatHistoryDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Saved page";
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function renderInkWords(text: string) {

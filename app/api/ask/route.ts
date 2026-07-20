@@ -1,3 +1,6 @@
+import { after } from "next/server";
+import { isOnlineHistoryConfigured, storeNotebookHistory } from "@/app/lib/online-history";
+
 type Answer = {
   question?: string;
   answer?: string;
@@ -11,15 +14,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  let body: { text?: unknown; image?: unknown };
+  let body: { text?: unknown; image?: unknown; notebookId?: unknown };
   try {
-    body = (await request.json()) as { text?: unknown; image?: unknown };
+    body = (await request.json()) as { text?: unknown; image?: unknown; notebookId?: unknown };
   } catch {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
   const text = typeof body.text === "string" ? body.text.trim().slice(0, 500) : "";
   const image = typeof body.image === "string" ? body.image : "";
+  const notebookId = validUuid(body.notebookId) ? body.notebookId : crypto.randomUUID();
 
   if (!text && !image) {
     return Response.json({ error: "Write or type a question first." }, { status: 400 });
@@ -30,6 +34,22 @@ export async function POST(request: Request) {
 
   try {
     const answer = await askGemini(text, image);
+
+    if (image && isOnlineHistoryConfigured()) {
+      after(async () => {
+        try {
+          await storeNotebookHistory({
+            notebookId,
+            question: answer.question || text || "Your handwritten question",
+            answer: answer.answer || "",
+            image,
+            model: GEMINI_MODEL,
+          });
+        } catch (historyError) {
+          console.error("Online notebook history could not be stored.", historyError);
+        }
+      });
+    }
 
     return Response.json({
       question: answer.question || text || "Your handwritten question",
@@ -44,7 +64,13 @@ export async function POST(request: Request) {
 async function checkGemini() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return Response.json({ available: true, installed: false, provider: "gemini", model: GEMINI_MODEL });
+    return Response.json({
+      available: true,
+      installed: false,
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      onlineHistory: isOnlineHistoryConfigured(),
+    });
   }
 
   try {
@@ -56,10 +82,26 @@ async function checkGemini() {
     if (!response.ok) throw new Error("Gemini rejected the API key.");
     const data = (await response.json()) as { models?: Array<{ name?: string }> };
     const installed = data.models?.some((item) => item.name === `models/${GEMINI_MODEL}`);
-    return Response.json({ available: true, installed: Boolean(installed), provider: "gemini", model: GEMINI_MODEL });
+    return Response.json({
+      available: true,
+      installed: Boolean(installed),
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      onlineHistory: isOnlineHistoryConfigured(),
+    });
   } catch {
-    return Response.json({ available: false, installed: false, provider: "gemini", model: GEMINI_MODEL });
+    return Response.json({
+      available: false,
+      installed: false,
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      onlineHistory: isOnlineHistoryConfigured(),
+    });
   }
+}
+
+function validUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 async function askGemini(text: string, image: string): Promise<Answer> {
